@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>내 디스코드 친구 맵</title>
+<style>
+  :root {
+    --bg: #f5f4ef;
+    --card: #ffffff;
+    --border: #dedcd2;
+    --text: #2c2c2a;
+    --text-muted: #7a7972;
+    --accent: #2c2c2a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1a;
+      --card: #262624;
+      --border: #3a3a37;
+      --text: #ece9e0;
+      --text-muted: #a3a196;
+      --accent: #ece9e0;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 16px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .wrap { width: 100%; max-width: 640px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 16px; }
+  .controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  input, select, button {
+    font-size: 14px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+  }
+  input { flex: 1; min-width: 110px; }
+  select { min-width: 100px; }
+  button {
+    cursor: pointer;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    font-weight: 500;
+  }
+  button:active { transform: scale(0.98); }
+  .legend {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 8px 0 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .legend .items { display: flex; gap: 16px; flex-wrap: wrap; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+  .dot.solid { background: #7a7972; }
+  .dot.dashed { border: 2px dashed #7a7972; background: transparent; }
+  #resetViewBtn {
+    padding: 4px 10px;
+    font-size: 11px;
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+  }
+  .graph-box {
+    position: relative;
+    width: 100%;
+    height: 480px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  svg { width: 100%; height: 100%; display: block; touch-action: none; }
+  text { user-select: none; }
+  .hint { font-size: 12px; color: var(--text-muted); margin-top: 10px; }
+  .node { cursor: grab; }
+  .node:active { cursor: grabbing; }
+
+  #nodePanel {
+    position: absolute;
+    display: none;
+    z-index: 10;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    width: 210px;
+  }
+  #nodePanel .panel-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0 0 8px;
+  }
+  #nodePanel .panel-section-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin: 8px 0 4px;
+  }
+  #nodePanel .swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  #nodePanel .swatch {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    padding: 0;
+  }
+  #nodePanel .swatch.custom {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    overflow: hidden;
+  }
+  #nodePanel input[type="color"] {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    overflow: hidden;
+    cursor: pointer;
+  }
+  #nodePanel .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 6px;
+  }
+  #nodePanel .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    padding: 3px 4px 3px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+  }
+  #nodePanel .chip button {
+    background: transparent;
+    color: inherit;
+    border: none;
+    padding: 0 4px;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  #nodePanel .add-group-row {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+  #nodePanel .add-group-row input {
+    flex: 1;
+    padding: 5px 8px;
+    font-size: 12px;
+    min-width: 0;
+  }
+  #nodePanel .add-group-row button {
+    padding: 5px 8px;
+    font-size: 12px;
+  }
+  #nodePanel .no-group {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  #nodePanel .panel-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  #nodePanel .panel-actions button {
+    flex: 1;
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+  #nodePanel .danger {
+    background: #c0433f;
+    color: #fff;
+  }
+  #nodePanel .ghost {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>내 디스코드 친구 맵</h1>
+
+  <div class="controls">
+    <input id="nameInput" type="text" placeholder="이름 입력" />
+    <input id="groupInput" list="groupList" placeholder="그룹 (예: 동아리)" />
+    <datalist id="groupList"></datalist>
+    <select id="connectInput"></select>
+    <select id="relationInput">
+      <option value="friend">친구</option>
+      <option value="acquaintance">아는 사람 (점선)</option>
+    </select>
+    <button id="addBtn">추가</button>
+  </div>
+
+  <div class="legend">
+    <div class="items">
+      <span><span class="dot solid"></span>친구 (실선)</span>
+      <span><span class="dot dashed"></span>아는 사람 / 친구의 친구 (점선)</span>
+    </div>
+    <button id="resetViewBtn">화면 초기화</button>
+  </div>
+
+  <div class="graph-box">
+    <svg id="graph" viewBox="0 0 640 480">
+      <g id="viewport"></g>
+    </svg>
+    <div id="nodePanel">
+      <p class="panel-title" id="panelTitle"></p>
+
+      <p class="panel-section-label">색상</p>
+      <div class="swatches" id="panelSwatches"></div>
+
+      <p class="panel-section-label">소속 그룹</p>
+      <div class="chips" id="panelChips"></div>
+      <div class="add-group-row">
+        <input id="panelGroupInput" list="groupList" placeholder="그룹 추가" />
+        <button id="panelAddGroupBtn">+</button>
+      </div>
+
+      <div class="panel-actions">
+        <button class="ghost" id="resetColorBtn">기본색</button>
+        <button class="danger" id="deleteBtn">삭제</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="hint">마우스 휠로 확대·축소, 휠(가운데) 버튼을 누른 채 드래그하면 화면을 이동할 수 있어요. 노드를 클릭하면 색·소속 그룹을 바꾸거나 삭제할 수 있고, 왼쪽 드래그로 노드를 옮길 수 있습니다.</p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script>
+(function () {
+  const palette = [
+    { fill: '#378ADD', stroke: '#185FA5' },
+    { fill: '#5DCAA5', stroke: '#0F6E56' },
+    { fill: '#F0997B', stroke: '#993C1D' },
+    { fill: '#AFA9EC', stroke: '#534AB7' },
+    { fill: '#ED93B1', stroke: '#993556' },
+    { fill: '#FAC775', stroke: '#854F0B' },
+    { fill: '#97C459', stroke: '#3B6D11' }
+  ];
+  const swatchHexes = palette.map(p => p.fill).concat(['#E24B4A', '#888780']);
+
+  const groupColorMap = {};
+  let paletteIdx = 0;
+  function colorForGroup(g) {
+    if (!g) return { fill: '#B4B2A9', stroke: '#5F5E5A' };
+    if (!groupColorMap[g]) {
+      groupColorMap[g] = palette[paletteIdx % palette.length];
+      paletteIdx++;
+    }
+    return groupColorMap[g];
+  }
+
+  function nodeColor(d) {
+    if (d.id === '나') return { fill: 'var(--accent)', stroke: 'var(--accent)' };
+    if (d.customColor) {
+      const dk = d3.color(d.customColor).darker(1.1).formatHex();
+      return { fill: d.customColor, stroke: dk };
+    }
+    if (d.groups && d.groups.length) return colorForGroup(d.groups[0]);
+    return { fill: '#B4B2A9', stroke: '#5F5E5A' };
+  }
+
+  const width = 640, height = 480;
+
+  let nodes = [
+    { id: '나', groups: [], r: 26, relation: 'friend', fx: width / 2, fy: height / 2 },
+    { id: '민준', groups: ['게임팟'], r: 18, relation: 'friend' },
+    { id: '서연', groups: ['게임팟'], r: 18, relation: 'friend' },
+    { id: '지호', groups: ['동아리'], r: 18, relation: 'friend' },
+    { id: '하은', groups: ['학교', '동아리'], r: 18, relation: 'friend' },
+    { id: '유나', groups: ['학교'], r: 16, relation: 'acquaintance' }
+  ];
+  let links = [
+    { source: '나', target: '민준' },
+    { source: '나', target: '서연' },
+    { source: '나', target: '지호' },
+    { source: '나', target: '하은' },
+    { source: '하은', target: '유나' }
+  ];
+
+  const svg = d3.select('#graph');
+  const svgNode = svg.node();
+  const viewportSel = svg.select('#viewport');
+  const hullG = viewportSel.append('g');
+  const linkG = viewportSel.append('g');
+  const nodeG = viewportSel.append('g');
+  const panel = document.getElementById('nodePanel');
+  const graphBox = document.querySelector('.graph-box');
+
+  const simulation = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d => d.id).distance(110).strength(0.6))
+    .force('charge', d3.forceManyBody().strength(-260))
+    .force('center', d3.forceCenter(width / 2, height / 2))
+    .force('collision', d3.forceCollide().radius(d => d.r + 14))
+    .force('group', forceCluster());
+
+  function forceCluster() {
+    let strength = 0.04;
+    function force(alpha) {
+      const centroids = {};
+      nodes.forEach(d => {
+        (d.groups || []).forEach(g => {
+          if (!centroids[g]) centroids[g] = { x: 0, y: 0, n: 0 };
+          centroids[g].x += d.x;
+          centroids[g].y += d.y;
+          centroids[g].n += 1;
+        });
+      });
+      Object.keys(centroids).forEach(g => {
+        centroids[g].x /= centroids[g].n;
+        centroids[g].y /= centroids[g].n;
+      });
+      nodes.forEach(d => {
+        const gs = d.groups || [];
+        if (!gs.length) return;
+        gs.forEach(g => {
+          const c = centroids[g];
+          d.vx -= (d.x - c.x) * (strength / gs.length) * alpha;
+          d.vy -= (d.y - c.y) * (strength / gs.length) * alpha;
+        });
+      });
+    }
+    force.initialize = () => {};
+    return force;
+  }
+
+  let linkSel, nodeSel;
+  let selectedNode = null;
+
+  function linkKey(d) {
+    return (d.source.id || d.source) + '-' + (d.target.id || d.target);
+  }
+
+  function updateGroupList() {
+    const dl = document.getElementById('groupList');
+    const groups = [...new Set(nodes.flatMap(n => n.groups || []))];
+    dl.innerHTML = groups.map(g => `<option value="${g}">`).join('');
+  }
+
+  function updateConnectOptions() {
+    const sel = document.getElementById('connectInput');
+    const prev = sel.value;
+    sel.innerHTML = '';
+    nodes.forEach(n => {
+      const opt = document.createElement('option');
+      opt.value = n.id;
+      opt.textContent = n.id + ' 에 연결';
+      sel.appendChild(opt);
+    });
+    if (nodes.some(n => n.id === prev)) sel.value = prev;
+  }
+
+  function render() {
+    linkSel = linkG.selectAll('line').data(links, linkKey);
+    linkSel.exit().remove();
+    linkSel = linkSel.enter().append('line')
+      .attr('stroke', 'var(--border)')
+      .attr('stroke-width', 1.5)
+      .merge(linkSel);
+
+    nodeSel = nodeG.selectAll('g.node').data(nodes, d => d.id);
+    nodeSel.exit().remove();
+
+    const enter = nodeSel.enter().append('g').attr('class', 'node')
+      .call(d3.drag()
+        .clickDistance(4)
+        .filter(e => !e.target.closest('.node') || d3.select(e.target.closest('.node')).datum().id !== '나')
+        .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+        .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
+        .on('end', (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+    enter.append('circle');
+    enter.append('text')
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'central')
+      .style('font-size', '13px')
+      .style('font-weight', '600');
+
+    nodeSel = enter.merge(nodeSel);
+
+    nodeSel.select('circle')
+      .attr('r', d => d.r)
+      .attr('fill', d => nodeColor(d).fill)
+      .attr('stroke', d => nodeColor(d).stroke)
+      .attr('stroke-width', 2)
+      .attr('stroke-dasharray', d => d.relation === 'acquaintance' ? '5,4' : null)
+      .attr('fill-opacity', d => d.relation === 'acquaintance' ? 0.35 : 1);
+
+    nodeSel.select('text')
+      .attr('dy', d => d.r + 16)
+      .style('fill', d => d.id === '나' ? 'var(--text)' : nodeColor(d).stroke)
+      .text(d => d.id);
+
+    nodeSel.on('click', (e, d) => {
+      e.stopPropagation();
+      openPanel(e, d);
+    });
+
+    if (selectedNode) {
+      const stillExists = nodes.find(n => n.id === selectedNode.id);
+      if (stillExists) { selectedNode = stillExists; refreshPanelContent(); }
+      else closePanel();
+    }
+
+    updateConnectOptions();
+    updateGroupList();
+  }
+
+  function hullPath(points) {
+    const line = d3.line().curve(d3.curveCatmullRomClosed.alpha(0.9));
+    return line(points);
+  }
+
+  function updateHulls() {
+    const groups = {};
+    nodes.forEach(d => {
+      (d.groups || []).forEach(g => {
+        if (!groups[g]) groups[g] = [];
+        const pad = d.r + 18;
+        for (let a = 0; a < 8; a++) {
+          const ang = (Math.PI * 2 * a) / 8;
+          groups[g].push([d.x + Math.cos(ang) * pad, d.y + Math.sin(ang) * pad]);
+        }
+      });
+    });
+
+    const data = Object.keys(groups).map(g => {
+      const pts = groups[g];
+      const hull = d3.polygonHull(pts) || pts;
+      return { group: g, hull };
+    });
+
+    const sel = hullG.selectAll('path.hull').data(data, d => d.group);
+    sel.exit().remove();
+    const enter = sel.enter().append('path').attr('class', 'hull');
+    enter.merge(sel)
+      .attr('d', d => hullPath(d.hull))
+      .attr('fill', d => colorForGroup(d.group).fill)
+      .attr('fill-opacity', 0.1)
+      .attr('stroke', d => colorForGroup(d.group).stroke)
+      .attr('stroke-opacity', 0.4)
+      .attr('stroke-width', 1.5)
+      .attr('stroke-dasharray', '4,4');
+
+    const labelData = data.map(d => {
+      const xs = d.hull.map(p => p[0]), ys = d.hull.map(p => p[1]);
+      return { group: d.group, x: (Math.min(...xs) + Math.max(...xs)) / 2, y: Math.min(...ys) - 6 };
+    });
+    const labelSel = hullG.selectAll('text.hull-label').data(labelData, d => d.group);
+    labelSel.exit().remove();
+    const labelEnter = labelSel.enter().append('text').attr('class', 'hull-label');
+    labelEnter.merge(labelSel)
+      .attr('x', d => d.x)
+      .attr('y', d => d.y)
+      .attr('text-anchor', 'middle')
+      .style('font-size', '11px')
+      .style('font-weight', '600')
+      .style('fill', d => colorForGroup(d.group).stroke)
+      .text(d => d.group);
+  }
+
+  render();
+
+  simulation.on('tick', () => {
+    nodes.forEach(d => {
+      d.x = Math.max(d.r + 6, Math.min(width - d.r - 6, d.x));
+      d.y = Math.max(d.r + 24, Math.min(height - d.r - 6, d.y));
+    });
+    linkSel.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+      .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    nodeSel.attr('transform', d => `translate(${d.x},${d.y})`);
+    updateHulls();
+    if (panel.style.display === 'block' && selectedNode) {
+      positionPanel(selectedNode);
+    }
+  });
+
+  document.getElementById('addBtn').addEventListener('click', () => {
+    const input = document.getElementById('nameInput');
+    const groupRaw = document.getElementById('groupInput').value.trim();
+    const relation = document.getElementById('relationInput').value;
+    const connectTo = document.getElementById('connectInput').value;
+    const name = input.value.trim();
+    if (!name || nodes.some(n => n.id === name)) {
+      input.style.borderColor = '#d0433f';
+      return;
+    }
+    input.style.borderColor = '';
+    const anchor = nodes.find(n => n.id === connectTo) || nodes[0];
+    const newNode = {
+      id: name, groups: groupRaw ? [groupRaw] : [], r: relation === 'acquaintance' ? 15 : 18, relation,
+      x: anchor.x + (Math.random() - 0.5) * 80,
+      y: anchor.y + (Math.random() - 0.5) * 80
+    };
+    nodes.push(newNode);
+    links.push({ source: connectTo, target: name });
+    input.value = '';
+    document.getElementById('groupInput').value = '';
+
+    simulation.nodes(nodes);
+    simulation.force('link').links(links);
+    render();
+    simulation.alpha(0.8).restart();
+  });
+
+  document.getElementById('nameInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('addBtn').click();
+  });
+
+  // ---- pan & zoom ----
+  const view = { x: 0, y: 0, k: 1 };
+  function applyView() {
+    viewportSel.attr('transform', `translate(${view.x},${view.y}) scale(${view.k})`);
+  }
+
+  svgNode.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const [mx, my] = d3.pointer(e, svgNode);
+    const scaleFactor = Math.exp(-e.deltaY * 0.0012);
+    const newK = Math.min(4, Math.max(0.3, view.k * scaleFactor));
+    const wx = (mx - view.x) / view.k;
+    const wy = (my - view.y) / view.k;
+    view.x = mx - wx * newK;
+    view.y = my - wy * newK;
+    view.k = newK;
+    applyView();
+  }, { passive: false });
+
+  let panStart = null;
+  function onPanMove(e) {
+    if (!panStart) return;
+    const [mx, my] = d3.pointer(e, svgNode);
+    view.x = panStart.x0 + (mx - panStart.mx);
+    view.y = panStart.y0 + (my - panStart.my);
+    applyView();
+  }
+  function onPanEnd() {
+    panStart = null;
+    graphBox.style.cursor = '';
+    window.removeEventListener('mousemove', onPanMove);
+    window.removeEventListener('mouseup', onPanEnd);
+  }
+  svgNode.addEventListener('mousedown', (e) => {
+    if (e.button !== 1) return;
+    e.preventDefault();
+    const [mx, my] = d3.pointer(e, svgNode);
+    panStart = { mx, my, x0: view.x, y0: view.y };
+    graphBox.style.cursor = 'grabbing';
+    window.addEventListener('mousemove', onPanMove);
+    window.addEventListener('mouseup', onPanEnd);
+  });
+  svgNode.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
+
+  document.getElementById('resetViewBtn').addEventListener('click', () => {
+    view.x = 0; view.y = 0; view.k = 1;
+    applyView();
+  });
+
+  // ---- node panel (color / groups / delete) ----
+
+  function positionPanel(d) {
+    const boxRect = graphBox.getBoundingClientRect();
+    const scaleX = boxRect.width / width;
+    const scaleY = boxRect.height / height;
+    const sx = view.x + d.x * view.k;
+    const sy = view.y + d.y * view.k;
+    const sr = d.r * view.k;
+    let left = sx * scaleX + sr * scaleX + 10;
+    let top = sy * scaleY - 10;
+    const panelW = panel.offsetWidth || 210;
+    if (left + panelW > boxRect.width) left = sx * scaleX - sr * scaleX - panelW - 10;
+    top = Math.max(6, Math.min(boxRect.height - (panel.offsetHeight || 220) - 6, top));
+    panel.style.left = left + 'px';
+    panel.style.top = top + 'px';
+  }
+
+  function refreshPanelContent() {
+    const d = selectedNode;
+    document.getElementById('panelTitle').textContent = d.id;
+
+    const swatchWrap = document.getElementById('panelSwatches');
+    swatchWrap.innerHTML = '';
+    swatchHexes.forEach(hex => {
+      const b = document.createElement('button');
+      b.className = 'swatch';
+      b.style.background = hex;
+      b.title = hex;
+      b.addEventListener('click', () => { d.customColor = hex; render(); });
+      swatchWrap.appendChild(b);
+    });
+    const customLabel = document.createElement('label');
+    customLabel.className = 'swatch custom';
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.value = d.customColor || '#888888';
+    colorInput.addEventListener('input', () => { d.customColor = colorInput.value; render(); });
+    customLabel.appendChild(colorInput);
+    swatchWrap.appendChild(customLabel);
+
+    const chipsWrap = document.getElementById('panelChips');
+    chipsWrap.innerHTML = '';
+    const groups = d.groups || [];
+    if (!groups.length) {
+      const p = document.createElement('p');
+      p.className = 'no-group';
+      p.textContent = '아직 소속된 그룹이 없어요.';
+      chipsWrap.appendChild(p);
+    } else {
+      groups.forEach(g => {
+        const chip = document.createElement('span');
+        chip.className = 'chip';
+        chip.style.borderColor = colorForGroup(g).stroke;
+        chip.style.color = colorForGroup(g).stroke;
+        const label = document.createElement('span');
+        label.textContent = g;
+        const rm = document.createElement('button');
+        rm.textContent = '✕';
+        rm.addEventListener('click', () => {
+          d.groups = d.groups.filter(x => x !== g);
+          render();
+        });
+        chip.appendChild(label);
+        chip.appendChild(rm);
+        chipsWrap.appendChild(chip);
+      });
+    }
+
+    const deleteBtn = document.getElementById('deleteBtn');
+    deleteBtn.style.display = d.id === '나' ? 'none' : 'block';
+  }
+
+  function openPanel(e, d) {
+    selectedNode = d;
+    refreshPanelContent();
+    panel.style.display = 'block';
+    positionPanel(d);
+  }
+
+  function closePanel() {
+    panel.style.display = 'none';
+    selectedNode = null;
+  }
+
+  document.getElementById('panelAddGroupBtn').addEventListener('click', () => {
+    if (!selectedNode) return;
+    const input = document.getElementById('panelGroupInput');
+    const g = input.value.trim();
+    if (!g) return;
+    selectedNode.groups = selectedNode.groups || [];
+    if (!selectedNode.groups.includes(g)) selectedNode.groups.push(g);
+    input.value = '';
+    render();
+    simulation.alpha(0.6).restart();
+  });
+  document.getElementById('panelGroupInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('panelAddGroupBtn').click(); }
+  });
+
+  document.getElementById('resetColorBtn').addEventListener('click', () => {
+    if (!selectedNode) return;
+    delete selectedNode.customColor;
+    render();
+  });
+
+  document.getElementById('deleteBtn').addEventListener('click', () => {
+    if (!selectedNode || selectedNode.id === '나') return;
+    const idToRemove = selectedNode.id;
+    nodes = nodes.filter(n => n.id !== idToRemove);
+    links = links.filter(l => (l.source.id || l.source) !== idToRemove && (l.target.id || l.target) !== idToRemove);
+    simulation.nodes(nodes);
+    simulation.force('link').links(links);
+    closePanel();
+    render();
+    simulation.alpha(0.8).restart();
+  });
+
+  panel.addEventListener('click', e => e.stopPropagation());
+  document.addEventListener('click', closePanel);
+  svg.on('click', closePanel);
+})();
+</script>
+</body>
+</html>
