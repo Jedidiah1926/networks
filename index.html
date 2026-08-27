@@ -71,11 +71,12 @@
     gap: 12px;
   }
   .legend .items { display: flex; gap: 16px; flex-wrap: wrap; }
+  .legend-actions { display: flex; gap: 6px; flex-wrap: wrap; }
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
   .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
   .dot.solid { background: #7a7972; }
   .dot.dashed { border: 2px dashed #7a7972; background: transparent; }
-  #resetViewBtn {
+  #resetViewBtn, #clearDataBtn {
     padding: 4px 10px;
     font-size: 11px;
     background: transparent;
@@ -85,7 +86,7 @@
   .graph-box {
     position: relative;
     width: 100%;
-    height: 480px;
+    height: 640px;
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 16px;
@@ -264,7 +265,10 @@
       <span><span class="dot solid"></span>친구 (실선)</span>
       <span><span class="dot dashed"></span>아는 사람 / 친구의 친구 (점선)</span>
     </div>
-    <button id="resetViewBtn">화면 초기화</button>
+    <div class="legend-actions">
+      <button id="resetViewBtn">화면 초기화</button>
+      <button id="clearDataBtn" title="저장된 데이터를 지우고 기본 상태로 되돌립니다">저장 데이터 초기화</button>
+    </div>
   </div>
 
   <div class="graph-box">
@@ -297,7 +301,7 @@
     </div>
   </div>
 
-  <p class="hint">Shift + 클릭으로 노드 두 개를 고른 뒤 "연결" 버튼을 누르면 두 사람을 이어줄 수 있어요. 마우스 휠로 확대·축소, 휠(가운데) 버튼 드래그로 화면 이동. 일반 클릭은 색·그룹·삭제 패널을 엽니다.</p>
+  <p class="hint">Shift + 클릭으로 노드 두 개를 고른 뒤 "연결" 버튼을 누르면 두 사람을 이어줄 수 있어요. 마우스 휠로 확대·축소, 휠(가운데) 버튼 드래그로 화면 이동. 일반 클릭은 색·그룹·삭제 패널을 엽니다. 변경 사항은 이 브라우저에 자동 저장되어 새로고침해도 유지돼요.</p>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
@@ -336,9 +340,15 @@
     return { fill: '#B4B2A9', stroke: '#5F5E5A' };
   }
 
-  const width = 640, height = 480;
+  // viewW/viewH: the visible "camera" window (matches the SVG viewBox).
+  // width/height: the much larger world the physics simulation runs in;
+  // pan/zoom is used to explore beyond the initial camera window.
+  const viewW = 640, viewH = 480;
+  const width = viewW * 4, height = viewH * 4;
 
-  let nodes = [
+  const STORAGE_KEY = 'discordFriendMap.v1';
+
+  const defaultNodes = [
     { id: '나', groups: [], r: 26, relation: 'friend', fx: width / 2, fy: height / 2 },
     { id: '민준', groups: ['게임팟'], r: 18, relation: 'friend' },
     { id: '서연', groups: ['게임팟'], r: 18, relation: 'friend' },
@@ -346,7 +356,7 @@
     { id: '하은', groups: ['학교', '동아리'], r: 18, relation: 'friend' },
     { id: '유나', groups: ['학교'], r: 16, relation: 'acquaintance' }
   ];
-  let links = [
+  const defaultLinks = [
     { source: '나', target: '민준' },
     { source: '나', target: '서연' },
     { source: '나', target: '지호' },
@@ -354,7 +364,45 @@
     { source: '하은', target: '유나' }
   ];
 
+  function loadSavedState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (!data || !Array.isArray(data.nodes) || !Array.isArray(data.links)) return null;
+      if (!data.nodes.some(n => n.id === '나')) return null;
+      return data;
+    } catch (err) {
+      console.warn('저장된 데이터를 불러오지 못했어요.', err);
+      return null;
+    }
+  }
+
+  const saved = loadSavedState();
+  let nodes = saved ? saved.nodes : defaultNodes.map(n => ({ ...n }));
+  let links = saved ? saved.links.map(l => ({ ...l })) : defaultLinks.map(l => ({ ...l }));
+  if (saved && saved.groupColorMap) Object.assign(groupColorMap, saved.groupColorMap);
+  if (saved && typeof saved.paletteIdx === 'number') paletteIdx = saved.paletteIdx;
+
+  function saveState() {
+    try {
+      const data = {
+        nodes: nodes.map(d => ({
+          id: d.id, groups: d.groups || [], r: d.r, relation: d.relation,
+          customColor: d.customColor, x: d.x, y: d.y,
+          fx: d.id === '나' ? d.fx : undefined, fy: d.id === '나' ? d.fy : undefined
+        })),
+        links: links.map(l => ({ source: l.source.id || l.source, target: l.target.id || l.target })),
+        groupColorMap, paletteIdx
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (err) {
+      console.warn('데이터 저장에 실패했어요.', err);
+    }
+  }
+
   const svg = d3.select('#graph');
+  svg.attr('viewBox', `0 0 ${viewW} ${viewH}`);
   const svgNode = svg.node();
   const viewportSel = svg.select('#viewport');
   const hullG = viewportSel.append('g');
@@ -574,6 +622,16 @@
     }
   });
 
+  simulation.on('end', saveState);
+  window.addEventListener('beforeunload', saveState);
+
+  document.getElementById('clearDataBtn').addEventListener('click', () => {
+    if (!confirm('저장된 데이터를 지우고 기본 상태로 되돌릴까요?')) return;
+    window.removeEventListener('beforeunload', saveState);
+    localStorage.removeItem(STORAGE_KEY);
+    location.reload();
+  });
+
   document.getElementById('addBtn').addEventListener('click', () => {
     const input = document.getElementById('nameInput');
     const groupRaw = document.getElementById('groupInput').value.trim();
@@ -600,6 +658,7 @@
     simulation.force('link').links(links);
     render();
     simulation.alpha(0.8).restart();
+    saveState();
   });
 
   document.getElementById('nameInput').addEventListener('keydown', e => {
@@ -641,6 +700,7 @@
       links.push({ source: a, target: b });
       simulation.force('link').links(links);
       simulation.alpha(0.8).restart();
+      saveState();
     }
     clearLinkSelection();
     render();
@@ -657,10 +717,16 @@
   }
 
   // ---- pan & zoom ----
-  const view = { x: 0, y: 0, k: 1 };
+  // Center the camera on the world's center by default, so the graph looks
+  // the same as before even though the physics world is now much bigger.
+  function defaultView() {
+    return { x: viewW / 2 - width / 2, y: viewH / 2 - height / 2, k: 1 };
+  }
+  const view = defaultView();
   function applyView() {
     viewportSel.attr('transform', `translate(${view.x},${view.y}) scale(${view.k})`);
   }
+  applyView();
 
   svgNode.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -701,7 +767,7 @@
   svgNode.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
 
   document.getElementById('resetViewBtn').addEventListener('click', () => {
-    view.x = 0; view.y = 0; view.k = 1;
+    Object.assign(view, defaultView());
     applyView();
   });
 
@@ -709,8 +775,8 @@
 
   function positionPanel(d) {
     const boxRect = graphBox.getBoundingClientRect();
-    const scaleX = boxRect.width / width;
-    const scaleY = boxRect.height / height;
+    const scaleX = boxRect.width / viewW;
+    const scaleY = boxRect.height / viewH;
     const sx = view.x + d.x * view.k;
     const sy = view.y + d.y * view.k;
     const sr = d.r * view.k;
@@ -734,7 +800,7 @@
       b.className = 'swatch';
       b.style.background = hex;
       b.title = hex;
-      b.addEventListener('click', () => { d.customColor = hex; render(); });
+      b.addEventListener('click', () => { d.customColor = hex; render(); saveState(); });
       swatchWrap.appendChild(b);
     });
     const customLabel = document.createElement('label');
@@ -742,7 +808,7 @@
     const colorInput = document.createElement('input');
     colorInput.type = 'color';
     colorInput.value = d.customColor || '#888888';
-    colorInput.addEventListener('input', () => { d.customColor = colorInput.value; render(); });
+    colorInput.addEventListener('input', () => { d.customColor = colorInput.value; render(); saveState(); });
     customLabel.appendChild(colorInput);
     swatchWrap.appendChild(customLabel);
 
@@ -767,6 +833,7 @@
         rm.addEventListener('click', () => {
           d.groups = d.groups.filter(x => x !== g);
           render();
+          saveState();
         });
         chip.appendChild(label);
         chip.appendChild(rm);
@@ -800,6 +867,7 @@
     input.value = '';
     render();
     simulation.alpha(0.6).restart();
+    saveState();
   });
   document.getElementById('panelGroupInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); document.getElementById('panelAddGroupBtn').click(); }
@@ -809,6 +877,7 @@
     if (!selectedNode) return;
     delete selectedNode.customColor;
     render();
+    saveState();
   });
 
   document.getElementById('deleteBtn').addEventListener('click', () => {
@@ -823,6 +892,7 @@
     render();
     updateLinkToolbar();
     simulation.alpha(0.8).restart();
+    saveState();
   });
 
   panel.addEventListener('click', e => e.stopPropagation());
