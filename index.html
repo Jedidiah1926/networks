@@ -211,6 +211,36 @@
     color: var(--text);
     border: 1px solid var(--border);
   }
+
+  #linkToolbar {
+    position: absolute;
+    display: none;
+    left: 50%;
+    bottom: 12px;
+    transform: translateX(-50%);
+    z-index: 10;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 8px 6px 14px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    display: none;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  #linkToolbar.show { display: flex; }
+  #linkToolbar button {
+    padding: 5px 10px;
+    font-size: 12px;
+    border-radius: 999px;
+  }
+  #linkToolbar .cancel {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+  }
 </style>
 </head>
 <body>
@@ -259,9 +289,15 @@
         <button class="danger" id="deleteBtn">삭제</button>
       </div>
     </div>
+
+    <div id="linkToolbar">
+      <span id="linkToolbarLabel"></span>
+      <button id="linkConfirmBtn">연결</button>
+      <button class="cancel" id="linkCancelBtn">취소</button>
+    </div>
   </div>
 
-  <p class="hint">마우스 휠로 확대·축소, 휠(가운데) 버튼을 누른 채 드래그하면 화면을 이동할 수 있어요. 노드를 클릭하면 색·소속 그룹을 바꾸거나 삭제할 수 있고, 왼쪽 드래그로 노드를 옮길 수 있습니다.</p>
+  <p class="hint">Shift + 클릭으로 노드 두 개를 고른 뒤 "연결" 버튼을 누르면 두 사람을 이어줄 수 있어요. 마우스 휠로 확대·축소, 휠(가운데) 버튼 드래그로 화면 이동. 일반 클릭은 색·그룹·삭제 패널을 엽니다.</p>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
@@ -277,6 +313,7 @@
     { fill: '#97C459', stroke: '#3B6D11' }
   ];
   const swatchHexes = palette.map(p => p.fill).concat(['#E24B4A', '#888780']);
+  const LINK_SELECT_COLOR = '#2c2c2a';
 
   const groupColorMap = {};
   let paletteIdx = 0;
@@ -324,6 +361,7 @@
   const linkG = viewportSel.append('g');
   const nodeG = viewportSel.append('g');
   const panel = document.getElementById('nodePanel');
+  const linkToolbar = document.getElementById('linkToolbar');
   const graphBox = document.querySelector('.graph-box');
 
   const simulation = d3.forceSimulation(nodes)
@@ -365,9 +403,17 @@
 
   let linkSel, nodeSel;
   let selectedNode = null;
+  let linkSelection = []; // node ids picked via shift-click, max 2
 
   function linkKey(d) {
     return (d.source.id || d.source) + '-' + (d.target.id || d.target);
+  }
+
+  function linksExist(idA, idB) {
+    return links.some(l => {
+      const s = l.source.id || l.source, t = l.target.id || l.target;
+      return (s === idA && t === idB) || (s === idB && t === idA);
+    });
   }
 
   function updateGroupList() {
@@ -408,7 +454,13 @@
         .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
         .on('end', (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
 
-    enter.append('circle');
+    enter.append('circle').attr('class', 'select-ring')
+      .attr('fill', 'none')
+      .attr('stroke', LINK_SELECT_COLOR)
+      .attr('stroke-width', 2)
+      .attr('stroke-dasharray', '4,3')
+      .style('display', 'none');
+    enter.append('circle').attr('class', 'main-circle');
     enter.append('text')
       .attr('text-anchor', 'middle')
       .attr('dominant-baseline', 'central')
@@ -417,13 +469,17 @@
 
     nodeSel = enter.merge(nodeSel);
 
-    nodeSel.select('circle')
+    nodeSel.select('circle.main-circle')
       .attr('r', d => d.r)
       .attr('fill', d => nodeColor(d).fill)
       .attr('stroke', d => nodeColor(d).stroke)
       .attr('stroke-width', 2)
       .attr('stroke-dasharray', d => d.relation === 'acquaintance' ? '5,4' : null)
       .attr('fill-opacity', d => d.relation === 'acquaintance' ? 0.35 : 1);
+
+    nodeSel.select('circle.select-ring')
+      .attr('r', d => d.r + 6)
+      .style('display', d => linkSelection.includes(d.id) ? null : 'none');
 
     nodeSel.select('text')
       .attr('dy', d => d.r + 16)
@@ -432,7 +488,11 @@
 
     nodeSel.on('click', (e, d) => {
       e.stopPropagation();
-      openPanel(e, d);
+      if (e.shiftKey) {
+        toggleLinkSelect(d);
+      } else {
+        openPanel(e, d);
+      }
     });
 
     if (selectedNode) {
@@ -545,6 +605,56 @@
   document.getElementById('nameInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('addBtn').click();
   });
+
+  // ---- shift-click connect existing nodes ----
+  function toggleLinkSelect(d) {
+    const idx = linkSelection.indexOf(d.id);
+    if (idx >= 0) {
+      linkSelection.splice(idx, 1);
+    } else {
+      if (linkSelection.length >= 2) linkSelection.shift();
+      linkSelection.push(d.id);
+    }
+    nodeSel.select('circle.select-ring')
+      .style('display', n => linkSelection.includes(n.id) ? null : 'none');
+    updateLinkToolbar();
+  }
+
+  function updateLinkToolbar() {
+    if (linkSelection.length === 2) {
+      const [a, b] = linkSelection;
+      const already = linksExist(a, b);
+      document.getElementById('linkToolbarLabel').textContent = already
+        ? `${a} - ${b} 는 이미 연결됨`
+        : `${a} - ${b} 연결할까요?`;
+      document.getElementById('linkConfirmBtn').style.display = already ? 'none' : 'inline-block';
+      linkToolbar.classList.add('show');
+    } else {
+      linkToolbar.classList.remove('show');
+    }
+  }
+
+  document.getElementById('linkConfirmBtn').addEventListener('click', () => {
+    if (linkSelection.length !== 2) return;
+    const [a, b] = linkSelection;
+    if (!linksExist(a, b)) {
+      links.push({ source: a, target: b });
+      simulation.force('link').links(links);
+      simulation.alpha(0.8).restart();
+    }
+    clearLinkSelection();
+    render();
+  });
+
+  document.getElementById('linkCancelBtn').addEventListener('click', () => {
+    clearLinkSelection();
+  });
+
+  function clearLinkSelection() {
+    linkSelection = [];
+    if (nodeSel) nodeSel.select('circle.select-ring').style('display', 'none');
+    updateLinkToolbar();
+  }
 
   // ---- pan & zoom ----
   const view = { x: 0, y: 0, k: 1 };
@@ -706,14 +816,17 @@
     const idToRemove = selectedNode.id;
     nodes = nodes.filter(n => n.id !== idToRemove);
     links = links.filter(l => (l.source.id || l.source) !== idToRemove && (l.target.id || l.target) !== idToRemove);
+    linkSelection = linkSelection.filter(id => id !== idToRemove);
     simulation.nodes(nodes);
     simulation.force('link').links(links);
     closePanel();
     render();
+    updateLinkToolbar();
     simulation.alpha(0.8).restart();
   });
 
   panel.addEventListener('click', e => e.stopPropagation());
+  linkToolbar.addEventListener('click', e => e.stopPropagation());
   document.addEventListener('click', closePanel);
   svg.on('click', closePanel);
 })();
